@@ -26,7 +26,6 @@ async function askQuestion(flights) {
     },
   ]);
 
-  console.log('You selected:', answers.selectedOptions);
   answers.selectedOptions.forEach((id) => {
     const selectedFlight = flights.find((item) => item.Id === id);
     selectedFlights[id] = { value: selectedFlight, present: true };
@@ -104,9 +103,9 @@ function toastHandler(title, content) {
   try {
     // Method 1: Direct command execution (most reliable)
     console.log(title, content);
-    /* execSync(
+    execSync(
       `termux-notification --title "${title}" --content "${content}" --sound`
-    ); */
+    );
 
     // Method 2: Alternative using termux package (if installed)
     /* termux.notification({
@@ -164,7 +163,6 @@ function minFlightHandler(flight) {
 }
 
 function flightNameMaker(flight) {
-  console.log('Name Maker', flight);
   const leg = flight.Segments[0]?.Legs[0];
   const departureTime = leg?.DepartureTime;
   const dateString = leg.DepartureDateString;
