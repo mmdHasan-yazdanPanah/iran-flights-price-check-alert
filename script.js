@@ -1,5 +1,6 @@
 const { default: axios } = require('axios');
 const { execSync } = require('child_process');
+const { default: inquirer } = require('inquirer');
 const readline = require('readline').createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -7,6 +8,35 @@ const readline = require('readline').createInterface({
 
 let date = '2025-04-07';
 let interval = 600; // 10min
+let selectedFlights = {};
+let asked = false;
+
+async function askQuestion(flights) {
+  const choices = flights.map((item) => ({
+    value: item.Id,
+    name: flightNameMaker(item),
+  }));
+
+  const answers = await inquirer.prompt([
+    {
+      type: 'checkbox', // Use 'list' for single selection, 'checkbox' for multiple
+      name: 'selectedOptions',
+      message: 'Which flights I Prioritize?',
+      choices: choices,
+    },
+  ]);
+
+  console.log('You selected:', answers.selectedOptions);
+  answers.selectedOptions.forEach((id) => {
+    const selectedFlight = flights.find((item) => item.Id === id);
+    selectedFlights[id] = { value: selectedFlight, present: true };
+  });
+  Object.keys(selectedFlights).forEach((id) => {
+    console.log(flightNameMaker(selectedFlights[id].value));
+  });
+  asked = true;
+  return;
+}
 
 function isValidStrictDate(dateString) {
   // First check the exact format
@@ -74,9 +104,9 @@ function toastHandler(title, content) {
   try {
     // Method 1: Direct command execution (most reliable)
     console.log(title, content);
-    execSync(
+    /* execSync(
       `termux-notification --title "${title}" --content "${content}" --sound`
-    );
+    ); */
 
     // Method 2: Alternative using termux package (if installed)
     /* termux.notification({
@@ -89,67 +119,82 @@ function toastHandler(title, content) {
   }
 }
 
-function flightHandler(flight) {
+function flightGetPrice(flight) {
+  let price = 0;
+  let cap = 0;
+
   const prices = flight.Prices[0];
-  if (!prices) {
-    notFoundHandler();
-    return;
+  if (prices) {
+    const PassengerFares = prices.PassengerFares;
+    const adlPasanger = PassengerFares.find((item) => item.PaxType === 'ADL');
+    price = adlPasanger.TotalFare;
+    cap = prices.Capacity;
+  }
+  return { price, cap };
+}
+
+function flightHandler(flight, prevMinPrice, prevCap, title) {
+  const { price: adlPrice, cap } = flightGetPrice(flight);
+
+  if (prevCap !== cap) {
+    toastHandler(
+      `Cap Changed`,
+      `CapBefore:${prevCap} - ${flightNameMaker(flight)}`
+    );
   }
 
-  const PassengerFares = prices.PassengerFares;
-  if (!PassengerFares) {
-    notFoundHandler();
-    return;
-  }
-
-  notFound = false;
-
-  const adlPasanger = PassengerFares.find((item) => item.PaxType === 'ADL');
-  const adlPrice = adlPasanger.TotalFare;
-
-  if (minPrice === adlPrice) {
+  if (prevMinPrice === adlPrice) {
     return;
   }
 
   if (adlPrice > minPrice) {
-    increaseHandler(flight, adlPrice);
+    increaseHandler(flight, adlPrice, title);
   } else {
-    decreaseHandler(flight, adlPrice);
+    decreaseHandler(flight, adlPrice, title);
   }
+}
+
+function minFlightHandler(flight) {
+  const { cap, price } = flightGetPrice(flight);
+  flightHandler(flight, minPrice, cap, 'Min Price Changed!!');
+  const { price: adlPrice } = flightGetPrice(flight);
+  minFlight = flight;
+  minPrice = adlPrice;
+  notFound = false;
+}
+
+function flightNameMaker(flight) {
+  console.log('Name Maker', flight);
+  const leg = flight.Segments[0]?.Legs[0];
+  const departureTime = leg?.DepartureTime;
+  const dateString = leg.DepartureDateString;
+  const d = new Date(departureTime);
+  const time = d.toLocaleTimeString('en-IR');
+  const { price, cap } = flightGetPrice(flight);
+
+  return `Date:${dateString} Time: ${time} - Cap: ${cap}`;
 }
 
 function infoTextMaker(flight, price) {
-  const leg = flight.Segments[0]?.Legs[0];
-  if (!leg) return notFoundHandler();
-  const departureTime = leg?.DepartureTime;
-  const dateString = leg.DepartureDateString;
-
-  const d = new Date(departureTime);
-  const time = d.toLocaleTimeString('en-IR');
+  const name = flightNameMaker(flight);
 
   return `Old(${(minPrice / 10).toLocaleString()}) New(${(
     price / 10
-  ).toLocaleString()}) || Date:${dateString} Time: ${time}`;
+  ).toLocaleString()}) || ${name}`;
 }
 
-function increaseHandler(flight, price) {
+function increaseHandler(flight, price, title) {
   const info = infoTextMaker(flight, price);
   if (info) {
-    toastHandler('Up👆👆', info);
+    toastHandler(`${title} Up👆👆`, info);
   }
-  minFlight = flight;
-  minPrice = price;
-  notFound = false;
 }
 
-function decreaseHandler(flight, price) {
+function decreaseHandler(flight, price, title) {
   const info = infoTextMaker(flight, price);
   if (info) {
-    toastHandler('Dowm👇👇', info);
+    toastHandler(`${title} Dowm👇👇`, info);
   }
-  minFlight = flight;
-  minPrice = price;
-  notFound = false;
 }
 
 function checkData(checkDate) {
@@ -169,14 +214,43 @@ function checkData(checkDate) {
       ],
       Baggage: true,
     })
-    .then((res) => {
+    .then(async (res) => {
       const filteredFlights = res.data.Flights.filter(
         (item) => item.Prices?.length > 0
       );
       const newMinFlight = filteredFlights[0];
 
       if (newMinFlight) {
-        flightHandler(newMinFlight);
+        if (!asked) {
+          await askQuestion(filteredFlights);
+        }
+        const selctedFlightKeys = Object.keys(selectedFlights);
+        if (selctedFlightKeys.length) {
+          selctedFlightKeys.forEach((selectedId) => {
+            const finded = filteredFlights.find(
+              (item) => item.Id === selectedId
+            );
+            const selectedFlight = selectedFlights[selectedId];
+
+            if (finded) {
+              let title = 'Now Available';
+              let price = 0;
+              let cap = 0;
+              if (selectedFlight.present) {
+                title = '';
+                price = flightGetPrice(selectedFlight.value).price;
+                cap = flightGetPrice(selectedFlight.value).cap;
+              }
+              flightHandler(finded, price, cap, title);
+              selectedFlights[selectedId].present = true;
+              selectedFlights[selectedId].value = finded;
+            } else {
+              toastHandler('Finished', flightNameMaker(selectedFlight.value));
+              selectedFlights[selectedId].present = false;
+            }
+          });
+        }
+        minFlightHandler(newMinFlight);
       } else {
         notFoundHandler();
       }
