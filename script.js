@@ -223,6 +223,7 @@ function checkInternetConnection(timeout = connectionTimeOut) {
             );
           }
           clearInterval(interval);
+          clearTimeout(timeoutID);
           resolve();
         }
       });
@@ -232,7 +233,7 @@ function checkInternetConnection(timeout = connectionTimeOut) {
     const interval = setInterval(check, 5000);
 
     // Log after 10 minutes if still offline
-    setTimeout(() => {
+    const timeoutID = setTimeout(() => {
       if (!logged) {
         let duration = Math.round((Date.now() - startTime) / 1000);
         toastHandler(
