@@ -1,19 +1,53 @@
-const { default: axios } = require('axios');
-const { execSync } = require('child_process');
-const { default: inquirer } = require('inquirer');
-const dns = require('dns');
+import axios from 'axios';
+import { execSync } from 'child_process';
+import inquirer from 'inquirer';
+import dns from 'dns';
+import moment from 'moment-jalaali';
+import chalk from 'chalk';
+import readline from 'readline';
 
-const readline = require('readline').createInterface({
+const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
 
-let date = '2025-04-07';
+const persianToEnglishMonths = {
+  فروردین: 'Farvardin',
+  اردیبهشت: 'Ordibehesht',
+  خرداد: 'Khordad',
+  تیر: 'Tir',
+  مرداد: 'Mordad',
+  شهریور: 'Shahrivar',
+  مهر: 'Mehr',
+  آبان: 'Aban',
+  آذر: 'Azar',
+  دی: 'Dey',
+  بهمن: 'Bahman',
+  اسفند: 'Esfand',
+};
+
+function replacePersianMonths(str) {
+  const monthKeys = Object.keys(persianToEnglishMonths); // Get the keys (Persian month names)
+  const regex = new RegExp(monthKeys.join('|'), 'g'); // Create a dynamic regex from the keys
+
+  return str.replace(regex, (match) =>
+    chalk.blue(persianToEnglishMonths[match])
+  );
+}
+
+let date = '1404/01/18';
 let interval = 600; // 10min
 let selectedFlights = {};
 let asked = false;
 // const connectionTimeOut = 10 * 60 * 1000;
 const connectionTimeOut = 20 * 1000;
+
+moment.loadPersian(); // بارگذاری تقویم فارسی
+
+function jallaliToMilladi(jalaliDate) {
+  // return moment(jalaliDate, 'jYYYY/jMM/jDD').format('DD-MM-YYYY');
+  return moment(jalaliDate, 'jYYYY/jMM/jDD').format('YYYY-MM-DD');
+}
 
 async function askQuestion(flights) {
   const choices = flights.map((item) => ({
@@ -41,50 +75,22 @@ async function askQuestion(flights) {
   return;
 }
 
-function isValidStrictDate(dateString) {
-  // First check the exact format
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return false;
-
-  // Parse the components
-  const parts = dateString.split('-');
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10);
-  const day = parseInt(parts[2], 10);
-
-  // Check basic ranges
-  if (year < 1000 || year > 9999 || month < 1 || month > 12) return false;
-
-  // Create a date object and verify it matches the input
-  const date = new Date(year, month - 1, day);
-  return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
-  );
-}
-
-readline.question(
-  'Please enter the date or hit enter for default(2025-04-07): ',
+rl.question(
+  `Please enter the date or hit enter for default(${date}): `,
   (readDate) => {
-    if (readDate) {
-      if (!isValidStrictDate(readDate)) {
-        console.log(`Date is Invalid!! ❌`);
-        readline.close();
-        return;
-      } else {
-        date = readDate;
-      }
+    if (readDate.length > 2) {
+      date = readDate;
     }
     console.log(`Using date: ${date}`);
 
-    readline.question('Interval - Default(600 => 10min): ', (readInterval) => {
+    rl.question('Interval - Default(600 => 10min): ', (readInterval) => {
       if (readInterval && !isNaN(+readInterval)) {
         interval = readInterval;
       }
       console.log(`Interval: ${interval}`);
       checkData(date);
 
-      readline.close();
+      rl.close();
     });
   }
 );
@@ -169,7 +175,7 @@ function minFlightHandler(flight) {
 function flightNameMaker(flight) {
   const leg = flight.Segments[0]?.Legs[0];
   const departureTime = leg?.DepartureTime;
-  const dateString = leg.DepartureDateString;
+  const dateString = replacePersianMonths(leg.DepartureDateString);
   const d = new Date(departureTime);
   const time = d.toLocaleTimeString('en-IR');
   const { price, cap } = flightGetPrice(flight);
@@ -241,6 +247,7 @@ function checkInternetConnection(timeout = connectionTimeOut) {
 
 async function checkData(checkDate) {
   console.log('Fetch', new Date().toString());
+  console.log('To miladi', jallaliToMilladi(checkDate));
 
   await checkInternetConnection();
 
@@ -254,7 +261,7 @@ async function checkData(checkDate) {
         {
           OriginCode: 'BUZ',
           DestinationCode: 'THR',
-          DepartureDate: checkDate,
+          DepartureDate: jallaliToMilladi(checkDate),
         },
       ],
       Baggage: true,
