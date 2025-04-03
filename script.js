@@ -1,6 +1,8 @@
 const { default: axios } = require('axios');
 const { execSync } = require('child_process');
 const { default: inquirer } = require('inquirer');
+const dns = require('dns');
+
 const readline = require('readline').createInterface({
   input: process.stdin,
   output: process.stdout,
@@ -10,6 +12,8 @@ let date = '2025-04-07';
 let interval = 600; // 10min
 let selectedFlights = {};
 let asked = false;
+// const connectionTimeOut = 10 * 60 * 1000;
+const connectionTimeOut = 20 * 1000;
 
 async function askQuestion(flights) {
   const choices = flights.map((item) => ({
@@ -195,8 +199,51 @@ function decreaseHandler(flight, price, title) {
   }
 }
 
-function checkData(checkDate) {
+// Function to check for an internet connection
+function checkInternetConnection(timeout = connectionTimeOut) {
+  // 10 minutes timeout
+  return new Promise((resolve) => {
+    let startTime = Date.now();
+    let logged = false;
+
+    const check = () => {
+      dns.lookup('google.com', (err) => {
+        if (!err) {
+          let duration = Math.round((Date.now() - startTime) / 1000);
+          if (logged) {
+            toastHandler(
+              'Connection established',
+              `Connection established after ${duration} seconds`
+            );
+          }
+          clearInterval(interval);
+          resolve();
+        }
+      });
+    };
+
+    // Check every 5 seconds
+    const interval = setInterval(check, 5000);
+
+    // Log after 10 minutes if still offline
+    setTimeout(() => {
+      if (!logged) {
+        let duration = Math.round((Date.now() - startTime) / 1000);
+        toastHandler(
+          'No internet connection',
+          `No internet connection in ${duration} seconds`
+        );
+        logged = true;
+      }
+    }, timeout);
+  });
+}
+
+async function checkData(checkDate) {
   console.log('Fetch', new Date().toString());
+
+  await checkInternetConnection();
+
   axios
     .post('https://flight.atighgasht.com/api/Flights', {
       AdultCount: 1,
@@ -255,7 +302,7 @@ function checkData(checkDate) {
     })
     .catch((err) => {
       toastHandler('Error in Fetch ❌', '');
-      console.log(err);
+      console.log(err.message);
     })
     .finally(() => {
       setTimeout(() => checkData(date), interval * 1000);
