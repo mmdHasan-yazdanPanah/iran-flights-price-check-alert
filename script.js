@@ -247,7 +247,6 @@ function checkInternetConnection(timeout = connectionTimeOut) {
 
 async function checkData(checkDate) {
   console.log('Fetch', new Date().toString());
-  console.log('To miladi', jallaliToMilladi(checkDate));
 
   await checkInternetConnection();
 
