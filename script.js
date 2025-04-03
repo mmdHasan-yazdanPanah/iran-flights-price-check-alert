@@ -52,7 +52,7 @@ function jallaliToMilladi(jalaliDate) {
 async function askQuestion(flights) {
   const choices = flights.map((item) => ({
     value: item.Id,
-    name: flightNameMaker(item),
+    name: replacePersianMonths(flightNameMaker(item)),
   }));
 
   const answers = await inquirer.prompt([
@@ -112,7 +112,7 @@ function notFoundHandler() {
 function toastHandler(title, content) {
   try {
     // Method 1: Direct command execution (most reliable)
-    console.log(title, content);
+    console.log(replacePersianMonths(title), replacePersianMonths(content));
     execSync(
       `termux-notification --title "${title}" --content "${content}" --sound`
     );
@@ -175,7 +175,7 @@ function minFlightHandler(flight) {
 function flightNameMaker(flight) {
   const leg = flight.Segments[0]?.Legs[0];
   const departureTime = leg?.DepartureTime;
-  const dateString = replacePersianMonths(leg.DepartureDateString);
+  const dateString = leg.DepartureDateString;
   const d = new Date(departureTime);
   const time = d.toLocaleTimeString('en-IR');
   const { price, cap } = flightGetPrice(flight);
